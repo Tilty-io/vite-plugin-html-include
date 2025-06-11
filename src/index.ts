@@ -25,14 +25,24 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
 
     transformIndexHtml: {
       order: 'pre',
-      handler: async (html) => {
+      handler: async (html, ctx) => {
         watchedFiles.clear()
-        return await processIncludes(html, process.cwd())
+        const finalHtml = await processIncludes(html, process.cwd())
+
+        // Ajoute explicitement les fichiers surveillés au watcher de Vite
+        if (watch && ctx?.server) {
+          for (const file of watchedFiles) {
+            ctx.server.watcher.add(file)
+          }
+        }
+
+        return finalHtml
       },
     },
 
     handleHotUpdate({ file, server }) {
       if (watch && watchedFiles.has(file)) {
+        // Déclenche un rechargement complet si un fichier inclus est modifié
         server.ws.send({ type: 'full-reload', path: '*' })
       }
     },
@@ -61,8 +71,8 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       }
 
       const resolvedPath = allowAbsolutePaths
-        ? path.resolve(baseDir, fileAttr)
-        : path.resolve(baseDir, '.' + path.sep + fileAttr)
+          ? path.resolve(baseDir, fileAttr)
+          : path.resolve(baseDir, '.' + path.sep + fileAttr)
 
       if (!extensions.some(ext => resolvedPath.endsWith(ext))) {
         tag.remove()
@@ -85,20 +95,20 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       const includedHtml = await processIncludes(content, path.dirname(resolvedPath))
 
       const variables = Object.fromEntries(
-        Object.entries(tag.attributes).filter(([k]) => k !== 'file')
-      )
+          Object.entries(tag.attributes).filter(([k]) => k !== 'file')
+      ) as Record<string, string>
       const interpolated = interpolateVariables(includedHtml, variables)
 
       const parsed = parse(interpolated)
       const defaultSlot = tag.innerHTML.trim()
       const slotNamedMap = new Map<string, string>()
 
-      tag.querySelectorAll('template[slot]').forEach(tpl => {
+      tag.querySelectorAll('template[slot]').forEach((tpl: any) => {
         const name = tpl.getAttribute('slot')
         if (name) slotNamedMap.set(name, tpl.innerHTML.trim())
       })
 
-      parsed.querySelectorAll('slot').forEach(slot => {
+      parsed.querySelectorAll('slot').forEach((slot: any) => {
         const name = slot.getAttribute('name')
         if (name && slotNamedMap.has(name)) {
           slot.replaceWith(slotNamedMap.get(name)!)
@@ -116,12 +126,12 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   function interpolateVariables(html: string, vars: Record<string, string>): string {
     const [open, close] = delimiters
     return html.replace(
-      new RegExp(`${escapeRegex(open)}(.*?)${escapeRegex(close)}`, 'g'),
-      (_, key) => vars[key.trim()] ?? ''
+        new RegExp(`${escapeRegex(open)}(.*?)${escapeRegex(close)}`, 'g'),
+        (_, key) => vars[key.trim()] ?? ''
     )
   }
 
   function escapeRegex(str: string): string {
-    return str.replace(/[-/\^$*+?.()|[\]{}]/g, '\$&')
+    return str.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')
   }
 }
