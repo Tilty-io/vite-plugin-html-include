@@ -1,16 +1,14 @@
 import fs from 'fs/promises'
 import path from 'path'
+import { Plugin } from 'vite'
 import { parse } from 'node-html-parser'
-import type { Plugin } from 'vite'
 
-export interface HtmlIncludeOptions {
+interface HtmlIncludeOptions {
   extensions?: string[]
   delimiters?: [string, string]
   allowAbsolutePaths?: boolean
   watch?: boolean
 }
-
-const PLUGIN_VERSION = '1.0.2'
 
 export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   const {
@@ -20,49 +18,23 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     watch = true,
   } = options
 
-  const watchedFiles = new Set<string>()
-
   return {
     name: 'vite-plugin-html-include',
 
     transformIndexHtml: {
       order: 'pre',
-      handler: async (html, ctx) => {
-        watchedFiles.clear()
-        const finalHtml = await processIncludes(html, process.cwd())
-
-        if (watch && ctx?.server) {
-          for (const file of watchedFiles) {
-            ctx.server.watcher.add(file)
-          }
-        }
-
-        console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] transform HTML terminé.`)
-        return finalHtml
+      handler: async (html) => {
+        return await processIncludes(html, process.cwd())
       },
     },
 
     handleHotUpdate({ file, server }) {
-      if (watch && watchedFiles.has(file)) {
-        console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Fichier modifié : ${file}`)
-
-        // Invalider tous les modules HTML connus du graphe
-        const htmlModules = [...server.moduleGraph.idToModuleMap.values()]
-            .filter(mod => mod.file?.endsWith('.html'))
-
-        if (htmlModules.length > 0) {
-          console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Invalidation de ${htmlModules.length} modules HTML`)
-          htmlModules.forEach(mod => {
-            server.moduleGraph.invalidateModule(mod)
-          })
-
-          server.ws.send({ type: 'full-reload' })
-          return htmlModules
-        }
-
-        // Fallback
-        server.ws.send({ type: 'full-reload' })
-        return []
+      if (watch && extensions.some(ext => file.endsWith(ext))) {
+        console.log(`[vite-plugin-html-include] Reload déclenché pour : ${file}`)
+        server.ws.send({
+          type: 'full-reload',
+          path: '*',
+        })
       }
     },
   }
@@ -80,12 +52,12 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     })
 
     while (true) {
-      const tag = root.querySelector('include')
-      if (!tag) break
+      const includeTag = root.querySelector('include')
+      if (!includeTag) break
 
-      const fileAttr = tag.getAttribute('file')
+      const fileAttr = includeTag.getAttribute('file')
       if (!fileAttr) {
-        tag.remove()
+        includeTag.remove()
         continue
       }
 
@@ -94,40 +66,39 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
           : path.resolve(baseDir, '.' + path.sep + fileAttr)
 
       if (!extensions.some(ext => resolvedPath.endsWith(ext))) {
-        tag.remove()
+        includeTag.remove()
         continue
       }
 
       let content: string
       try {
-        content = await fs.readFile(resolvedPath, 'utf-8')
-        if (watch) {
-          watchedFiles.add(resolvedPath)
-          console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] watchinggg: ${resolvedPath}`)
-        }
-      } catch {
-        console.warn(`[vite-plugin-html-include@${PLUGIN_VERSION}] Erreur lecture: ${resolvedPath}`)
-        tag.remove()
+        content = await fs.readFile(resolvedPath, 'utf8')
+      } catch (e) {
+        console.warn(`[vite-plugin-html-include] Erreur de lecture de ${resolvedPath}`)
+        includeTag.remove()
         continue
       }
 
-      const includedHtml = await processIncludes(content, path.dirname(resolvedPath))
+      const processedContent = await processIncludes(content, path.dirname(resolvedPath))
 
       const variables = Object.fromEntries(
-          Object.entries(tag.attributes).filter(([k]) => k !== 'file')
-      ) as Record<string, string>
-      const interpolated = interpolateVariables(includedHtml, variables)
+          Object.entries(includeTag.attributes).filter(([k]) => k !== 'file')
+      )
 
-      const parsed = parse(interpolated)
-      const defaultSlot = tag.innerHTML.trim()
+      const interpolated = interpolateVariables(processedContent, variables)
+
+      const defaultSlot = includeTag.innerHTML.trim()
       const slotNamedMap = new Map<string, string>()
 
-      tag.querySelectorAll('template[slot]').forEach((tpl: any) => {
-        const name = tpl.getAttribute('slot')
-        if (name) slotNamedMap.set(name, tpl.innerHTML.trim())
+      includeTag.querySelectorAll('template[slot]').forEach(template => {
+        const name = template.getAttribute('slot')
+        if (name) {
+          slotNamedMap.set(name, template.innerHTML.trim())
+        }
       })
 
-      parsed.querySelectorAll('slot').forEach((slot: any) => {
+      const slotRoot = parse(interpolated)
+      slotRoot.querySelectorAll('slot').forEach(slot => {
         const name = slot.getAttribute('name')
         if (name && slotNamedMap.has(name)) {
           slot.replaceWith(slotNamedMap.get(name)!)
@@ -136,7 +107,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         }
       })
 
-      tag.replaceWith(parsed.toString())
+      includeTag.replaceWith(slotRoot.toString())
     }
 
     return root.toString()
@@ -150,7 +121,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     )
   }
 
-  function escapeRegex(str: string): string {
-    return str.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')
+  function escapeRegex(s: string): string {
+    return s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
   }
 }
