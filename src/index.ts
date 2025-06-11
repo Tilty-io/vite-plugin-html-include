@@ -29,7 +29,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         watchedFiles.clear()
         const finalHtml = await processIncludes(html, process.cwd())
 
-        // Ajoute explicitement les fichiers surveillés au watcher de Vite
+        // On ajoute explicitement les fichiers à surveiller
         if (watch && ctx?.server) {
           for (const file of watchedFiles) {
             ctx.server.watcher.add(file)
@@ -42,8 +42,9 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
 
     handleHotUpdate({ file, server }) {
       if (watch && watchedFiles.has(file)) {
-        // Déclenche un rechargement complet si un fichier inclus est modifié
-        server.ws.send({ type: 'full-reload', path: '*' })
+        console.log(`[vite-plugin-html-include] changement détecté : ${file}`)
+        // Force le rechargement de la page entière
+        server.ws.send({ type: 'full-reload' })
       }
     },
   }
