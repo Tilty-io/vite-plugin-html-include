@@ -1,7 +1,7 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { parse } from 'node-html-parser'
-import type { Plugin, ViteDevServer } from 'vite'
+import type { Plugin } from 'vite'
 
 export interface HtmlIncludeOptions {
   extensions?: string[]
@@ -9,6 +9,8 @@ export interface HtmlIncludeOptions {
   allowAbsolutePaths?: boolean
   watch?: boolean
 }
+
+const PLUGIN_VERSION = '1.0.1'
 
 export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   const {
@@ -29,22 +31,30 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         watchedFiles.clear()
         const finalHtml = await processIncludes(html, process.cwd())
 
-        // On ajoute explicitement les fichiers à surveiller
         if (watch && ctx?.server) {
           for (const file of watchedFiles) {
             ctx.server.watcher.add(file)
           }
         }
 
+        console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] transform HTML terminé.`)
         return finalHtml
       },
     },
 
     handleHotUpdate({ file, server }) {
       if (watch && watchedFiles.has(file)) {
-        console.log(`[vite-plugin-html-include] changement détecté : ${file}`)
-        // Force le rechargement de la page entière
+        console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Fichier modifié : ${file}`)
+
+        const htmlModules = server.moduleGraph.getModulesByFile(file)
+        if (htmlModules && htmlModules.size > 0) {
+          console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Modules liés trouvés, rebuild déclenché`)
+          return [...htmlModules]
+        }
+
+        console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Aucun module lié, reload global`)
         server.ws.send({ type: 'full-reload' })
+        return []
       }
     },
   }
@@ -85,10 +95,10 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         content = await fs.readFile(resolvedPath, 'utf-8')
         if (watch) {
           watchedFiles.add(resolvedPath)
-          console.log(`[vite-plugin-html-include] watching: ${resolvedPath}`)
+          console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] watching: ${resolvedPath}`)
         }
       } catch {
-        console.warn(`[vite-plugin-html-include] Erreur lecture: ${resolvedPath}`)
+        console.warn(`[vite-plugin-html-include@${PLUGIN_VERSION}] Erreur lecture: ${resolvedPath}`)
         tag.remove()
         continue
       }
