@@ -10,7 +10,7 @@ export interface HtmlIncludeOptions {
   watch?: boolean
 }
 
-const PLUGIN_VERSION = '1.0.1'
+const PLUGIN_VERSION = '1.0.2'
 
 export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   const {
@@ -46,13 +46,21 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       if (watch && watchedFiles.has(file)) {
         console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Fichier modifié : ${file}`)
 
-        const htmlModules = server.moduleGraph.getModulesByFile(file)
-        if (htmlModules && htmlModules.size > 0) {
-          console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Modules liés trouvés, rebuild déclenché`)
-          return [...htmlModules]
+        // Invalider tous les modules HTML connus du graphe
+        const htmlModules = [...server.moduleGraph.idToModuleMap.values()]
+            .filter(mod => mod.file?.endsWith('.html'))
+
+        if (htmlModules.length > 0) {
+          console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Invalidation de ${htmlModules.length} modules HTML`)
+          htmlModules.forEach(mod => {
+            server.moduleGraph.invalidateModule(mod)
+          })
+
+          server.ws.send({ type: 'full-reload' })
+          return htmlModules
         }
 
-        console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] Aucun module lié, reload global`)
+        // Fallback
         server.ws.send({ type: 'full-reload' })
         return []
       }
@@ -95,7 +103,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         content = await fs.readFile(resolvedPath, 'utf-8')
         if (watch) {
           watchedFiles.add(resolvedPath)
-          console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] watching: ${resolvedPath}`)
+          console.log(`[vite-plugin-html-include@${PLUGIN_VERSION}] watchinggg: ${resolvedPath}`)
         }
       } catch {
         console.warn(`[vite-plugin-html-include@${PLUGIN_VERSION}] Erreur lecture: ${resolvedPath}`)
