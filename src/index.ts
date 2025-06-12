@@ -2,6 +2,9 @@ import fs from 'fs/promises'
 import path from 'path'
 import { Plugin } from 'vite'
 import { parse } from 'node-html-parser'
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const { version } = require('../package.json')
 
 interface HtmlIncludeOptions {
   extensions?: string[]
@@ -30,7 +33,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
 
     handleHotUpdate({ file, server }) {
       if (watch && extensions.some(ext => file.endsWith(ext))) {
-        console.log(`[vite-plugin-html-include] Reload déclenché pour : ${file}`)
+        console.log(`[vite-plugin-html-include]@${version} Reload déclenché pour : ${file}`)
         server.ws.send({
           type: 'full-reload',
           path: '*',
@@ -74,7 +77,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       try {
         content = await fs.readFile(resolvedPath, 'utf8')
       } catch (e) {
-        console.warn(`[vite-plugin-html-include] Erreur de lecture de ${resolvedPath}`)
+        console.warn(`[vite-plugin-html-include]@${version} Erreur de lecture de ${resolvedPath}`)
         includeTag.remove()
         continue
       }
