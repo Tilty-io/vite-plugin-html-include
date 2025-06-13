@@ -1,8 +1,9 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { parse } from 'node-html-parser'
+import {HTMLElement, parse} from 'node-html-parser'
 import { createRequire } from 'module'
 import type { Plugin } from 'vite'
+import pc from 'picocolors'
 
 const require = createRequire(import.meta.url)
 const { version } = require('../package.json')
@@ -79,7 +80,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         content = await fs.readFile(resolvedPath, 'utf-8')
         console.log(`[vite-plugin-html-include@${version}] Chargé : ${resolvedPath}`)
       } catch {
-        console.warn(`[vite-plugin-html-include@${version}] Erreur lecture: ${resolvedPath}`)
+        console.warn(pc.red(`[vite-plugin-html-include@${version}] Erreur lecture: ${resolvedPath}`));
         tag.remove()
         continue
       }
@@ -92,6 +93,23 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       const interpolated = interpolateVariables(includedHtml, variables)
 
       const parsed = parse(interpolated)
+
+
+      // Gestion intelligente de class (comme Vue.js)
+      const includeClass = tag.getAttribute('class')
+      const children = parsed.childNodes.filter(n => n.nodeType === 1) // éléments HTML uniquement
+
+      if (includeClass) {
+        if (children.length === 1) {
+          const rootEl = children[0] as HTMLElement
+          const existingClass = rootEl.getAttribute('class') || ''
+          const merged = (existingClass + ' ' + includeClass).trim()
+          rootEl.setAttribute('class', merged)
+        } else {
+          console.warn(pc.yellow(`[vite-plugin-html-include@${version}] Impossible d'ajouter class='${includeClass}' car le composant "${fileAttr}" a plusieurs éléments racines.`))
+        }
+      }
+
       const defaultSlot = tag.innerHTML.trim()
       const slotNamedMap = new Map<string, string>()
 
