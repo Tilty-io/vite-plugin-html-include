@@ -102,9 +102,14 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
 
       parsed.querySelectorAll('slot').forEach(slot => {
         const name = slot.getAttribute('name')
-        if (name && slotNamedMap.has(name)) {
-          slot.replaceWith(slotNamedMap.get(name)!)
-        } else if (!name) {
+        if (name) {
+          if (slotNamedMap.has(name)) {
+            slot.replaceWith(slotNamedMap.get(name)!)
+          } else {
+            // Slot nommé non remplacé : on garde son contenu d'origine (slot par défaut)
+          }
+        } else {
+          // Slot par défaut
           slot.replaceWith(defaultSlot)
         }
       })
