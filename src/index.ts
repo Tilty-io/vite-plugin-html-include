@@ -1,12 +1,13 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { Plugin } from 'vite'
 import { parse } from 'node-html-parser'
 import { createRequire } from 'module'
+import type { Plugin } from 'vite'
+
 const require = createRequire(import.meta.url)
 const { version } = require('../package.json')
 
-interface HtmlIncludeOptions {
+export interface HtmlIncludeOptions {
   extensions?: string[]
   delimiters?: [string, string]
   allowAbsolutePaths?: boolean
@@ -33,7 +34,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
 
     handleHotUpdate({ file, server }) {
       if (watch && extensions.some(ext => file.endsWith(ext))) {
-        console.log(`[vite-plugin-html-include]@${version} Reload déclenché pour : ${file}`)
+        console.log(`[vite-plugin-html-include@${version}] Reload fichier détecté : ${file}`)
         server.ws.send({
           type: 'full-reload',
           path: '*',
@@ -55,12 +56,12 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     })
 
     while (true) {
-      const includeTag = root.querySelector('include')
-      if (!includeTag) break
+      const tag = root.querySelector('include')
+      if (!tag) break
 
-      const fileAttr = includeTag.getAttribute('file')
+      const fileAttr = tag.getAttribute('file')
       if (!fileAttr) {
-        includeTag.remove()
+        tag.remove()
         continue
       }
 
@@ -69,39 +70,37 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
           : path.resolve(baseDir, '.' + path.sep + fileAttr)
 
       if (!extensions.some(ext => resolvedPath.endsWith(ext))) {
-        includeTag.remove()
+        tag.remove()
         continue
       }
 
       let content: string
       try {
-        content = await fs.readFile(resolvedPath, 'utf8')
-      } catch (e) {
-        console.warn(`[vite-plugin-html-include]@${version} Erreur de lecture de ${resolvedPath}`)
-        includeTag.remove()
+        content = await fs.readFile(resolvedPath, 'utf-8')
+        console.log(`[vite-plugin-html-include@${version}] Chargé : ${resolvedPath}`)
+      } catch {
+        console.warn(`[vite-plugin-html-include@${version}] Erreur lecture: ${resolvedPath}`)
+        tag.remove()
         continue
       }
 
-      const processedContent = await processIncludes(content, path.dirname(resolvedPath))
+      const includedHtml = await processIncludes(content, path.dirname(resolvedPath))
 
       const variables = Object.fromEntries(
-          Object.entries(includeTag.attributes).filter(([k]) => k !== 'file')
+          Object.entries(tag.attributes).filter(([k]) => k !== 'file')
       )
+      const interpolated = interpolateVariables(includedHtml, variables)
 
-      const interpolated = interpolateVariables(processedContent, variables)
-
-      const defaultSlot = includeTag.innerHTML.trim()
+      const parsed = parse(interpolated)
+      const defaultSlot = tag.innerHTML.trim()
       const slotNamedMap = new Map<string, string>()
 
-      includeTag.querySelectorAll('template[slot]').forEach(template => {
-        const name = template.getAttribute('slot')
-        if (name) {
-          slotNamedMap.set(name, template.innerHTML.trim())
-        }
+      tag.querySelectorAll('template[slot]').forEach(tpl => {
+        const name = tpl.getAttribute('slot')
+        if (name) slotNamedMap.set(name, tpl.innerHTML.trim())
       })
 
-      const slotRoot = parse(interpolated)
-      slotRoot.querySelectorAll('slot').forEach(slot => {
+      parsed.querySelectorAll('slot').forEach(slot => {
         const name = slot.getAttribute('name')
         if (name && slotNamedMap.has(name)) {
           slot.replaceWith(slotNamedMap.get(name)!)
@@ -110,7 +109,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         }
       })
 
-      includeTag.replaceWith(slotRoot.toString())
+      tag.replaceWith(parsed.toString())
     }
 
     return root.toString()
@@ -124,7 +123,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     )
   }
 
-  function escapeRegex(s: string): string {
-    return s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
+  function escapeRegex(str: string): string {
+    return str.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')
   }
 }
