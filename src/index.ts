@@ -35,7 +35,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
 
     handleHotUpdate({ file, server }) {
       if (watch && extensions.some(ext => file.endsWith(ext))) {
-        console.log(`[vite-plugin-html-include@${version}] Reload fichier détecté : ${file}`)
+        console.log(`[vite-plugin-html-include@${version}] File changed: ${file}`)
         server.ws.send({
           type: 'full-reload',
           path: '*',
@@ -78,9 +78,9 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       let content: string
       try {
         content = await fs.readFile(resolvedPath, 'utf-8')
-        console.log(`[vite-plugin-html-include@${version}] Chargé : ${resolvedPath}`)
+        console.log(`[vite-plugin-html-include@${version}] Loaded: ${resolvedPath}`)
       } catch {
-        console.warn(pc.red(`[vite-plugin-html-include@${version}] Erreur lecture: ${resolvedPath}`))
+        console.warn(pc.red(`[vite-plugin-html-include@${version}] Error reading file: ${resolvedPath}`))
         tag.remove()
         continue
       }
@@ -90,7 +90,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       const interpolated = interpolateVariables(includedHtml, extractVars(tag.attributes))
       const parsed = parse(interpolated)
 
-      // Slot logic
+      // Slot handling
       const defaultSlot = tag.innerHTML.trim()
       const slotNamedMap = new Map<string, string>()
       tag.querySelectorAll('template[slot]').forEach(tpl => {
@@ -106,7 +106,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         }
       })
 
-      // Récupération des éléments HTML enfants
+      // Retrieve only HTML element children
       const children = parsed.childNodes.filter(n => n.nodeType === 1)
 
       if (children.length === 1) {
@@ -115,31 +115,30 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         for (const [attr, val] of Object.entries(tag.attributes)) {
           if (attr.startsWith('$') || attr === 'file') continue
 
-          // Fusion des classes (comme Vue.js)
+          // Merge classes (like Vue.js)
           if (attr === 'class') {
             const existing = rootEl.getAttribute('class') || ''
             rootEl.setAttribute('class', (existing + ' ' + val).trim())
           }
 
-          // Fusion des styles (comme Vue.js)
+          // Merge styles (like Vue.js)
           else if (attr === 'style') {
             const existing = rootEl.getAttribute('style') || ''
             const merged = [existing, val]
                 .filter(Boolean)
-                .map(s => s.trim().replace(/;*$/, '')) // supprime les ; en trop
+                .map(s => s.trim().replace(/;*$/, '')) // remove trailing ;
                 .join('; ') + ';'
             rootEl.setAttribute('style', merged)
           }
 
-          // Tous les autres attributs normaux
+          // Other attributes
           else {
             rootEl.setAttribute(attr, val)
           }
         }
       } else if (tag.getAttribute('class') || tag.getAttribute('style')) {
-        console.warn(pc.yellow(`[vite-plugin-html-include@${version}] Impossible d'ajouter class/style car le composant "${fileAttr}" a plusieurs éléments racines.`))
+        console.warn(pc.yellow(`[vite-plugin-html-include@${version}] Cannot apply class/style: "${fileAttr}" has multiple root elements.`))
       }
-
 
       tag.replaceWith(parsed.toString())
     }
@@ -148,7 +147,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   }
 
   /**
-   * Extrait les variables passées sous forme $key="value"
+   * Extracts variables passed as $key="value"
    */
   function extractVars(attributes: Record<string, string>): Record<string, string> {
     return Object.fromEntries(
@@ -159,7 +158,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   }
 
   /**
-   * Remplace uniquement les `{{$var}}` par leur valeur
+   * Replaces only `{{$var}}` occurrences with their values
    */
   function interpolateVariables(html: string, vars: Record<string, string>): string {
     const [open, close] = delimiters
@@ -170,7 +169,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   }
 
   /**
-   * Échappe une chaîne pour l'utiliser dans une RegExp
+   * Escapes a string to safely use it in a RegExp
    */
   function escapeRegex(str: string): string {
     return str.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')
