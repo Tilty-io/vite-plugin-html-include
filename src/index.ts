@@ -66,11 +66,15 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         continue
       }
 
-      const resolvedPath = allowAbsolutePaths
-          ? path.resolve(baseDir, fileAttr)
-          : path.resolve(baseDir, '.' + path.sep + fileAttr)
+      // Si le chemin commence par /, on le considère relatif à la racine du projet
+      const resolvedPath = fileAttr.startsWith('/')
+          ? path.resolve(process.cwd(), fileAttr.slice(1)) // on vire le "/" pour éviter la double racine
+          : allowAbsolutePaths
+              ? path.resolve(baseDir, fileAttr)
+              : path.resolve(baseDir, '.' + path.sep + fileAttr)
 
       if (!extensions.some(ext => resolvedPath.endsWith(ext))) {
+        console.warn(pc.yellow(`[vite-plugin-html-include@${version}] Skipping (extension not allowed): ${resolvedPath}`))
         tag.remove()
         continue
       }
