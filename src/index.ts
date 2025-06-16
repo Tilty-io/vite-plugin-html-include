@@ -163,8 +163,8 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   function interpolateVariables(html: string, vars: Record<string, string>): string {
     const [open, close] = delimiters
     return html.replace(
-        new RegExp(`${escapeRegex(open)}\\$(.*?)${escapeRegex(close)}`, 'g'),
-        (_, key) => vars[key.trim()] ?? ''
+        new RegExp(`${escapeRegex(open)}\\s*\\$(.*?)\\s*${escapeRegex(close)}`, 'g'),
+        (_, key) => vars[key.trim()] ?? '' // <-- ici on applique bien .trim()
     )
   }
 
