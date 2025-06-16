@@ -78,6 +78,19 @@ export default defineConfig({
 </div>
 ```
 
+### Résultat final
+
+```html
+<div class="card">
+    <h1>En-tête personnalisé</h1>
+    <div class="body">
+        <h2>Bonjour</h2>
+        <p>Voici le contenu principal</p>
+    </div>
+    <footer>Pied de page personnalisé</footer>
+</div>
+```
+
 ---
 
 ## Class and Style Merging
