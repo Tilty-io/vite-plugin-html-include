@@ -1,6 +1,6 @@
 import fs from 'fs/promises'
 import path from 'path'
-import {HTMLElement, parse} from 'node-html-parser'
+import { HTMLElement, parse } from 'node-html-parser'
 import { createRequire } from 'module'
 import type { Plugin } from 'vite'
 import pc from 'picocolors'
@@ -80,57 +80,66 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         content = await fs.readFile(resolvedPath, 'utf-8')
         console.log(`[vite-plugin-html-include@${version}] Chargé : ${resolvedPath}`)
       } catch {
-        console.warn(pc.red(`[vite-plugin-html-include@${version}] Erreur lecture: ${resolvedPath}`));
+        console.warn(pc.red(`[vite-plugin-html-include@${version}] Erreur lecture: ${resolvedPath}`))
         tag.remove()
         continue
       }
 
       const includedHtml = await processIncludes(content, path.dirname(resolvedPath))
 
-      const variables = Object.fromEntries(
-          Object.entries(tag.attributes).filter(([k]) => k !== 'file')
-      )
-      const interpolated = interpolateVariables(includedHtml, variables)
-
+      const interpolated = interpolateVariables(includedHtml, extractVars(tag.attributes))
       const parsed = parse(interpolated)
 
-
-      // Gestion intelligente de class (comme Vue.js)
-      const includeClass = tag.getAttribute('class')
-      const children = parsed.childNodes.filter(n => n.nodeType === 1) // éléments HTML uniquement
-
-      if (includeClass) {
-        if (children.length === 1) {
-          const rootEl = children[0] as HTMLElement
-          const existingClass = rootEl.getAttribute('class') || ''
-          const merged = (existingClass + ' ' + includeClass).trim()
-          rootEl.setAttribute('class', merged)
-        } else {
-          console.warn(pc.yellow(`[vite-plugin-html-include@${version}] Impossible d'ajouter class='${includeClass}' car le composant "${fileAttr}" a plusieurs éléments racines.`))
-        }
-      }
-
+      // Slot logic
       const defaultSlot = tag.innerHTML.trim()
       const slotNamedMap = new Map<string, string>()
-
       tag.querySelectorAll('template[slot]').forEach(tpl => {
         const name = tpl.getAttribute('slot')
         if (name) slotNamedMap.set(name, tpl.innerHTML.trim())
       })
-
       parsed.querySelectorAll('slot').forEach(slot => {
         const name = slot.getAttribute('name')
-        if (name) {
-          if (slotNamedMap.has(name)) {
-            slot.replaceWith(slotNamedMap.get(name)!)
-          } else {
-            // Slot nommé non remplacé : on garde son contenu d'origine (slot par défaut)
-          }
-        } else {
-          // Slot par défaut
+        if (name && slotNamedMap.has(name)) {
+          slot.replaceWith(slotNamedMap.get(name)!)
+        } else if (!name) {
           slot.replaceWith(defaultSlot)
         }
       })
+
+      // Récupération des éléments HTML enfants
+      const children = parsed.childNodes.filter(n => n.nodeType === 1)
+
+      if (children.length === 1) {
+        const rootEl = children[0] as HTMLElement
+
+        for (const [attr, val] of Object.entries(tag.attributes)) {
+          if (attr.startsWith('$') || attr === 'file') continue
+
+          // Fusion des classes (comme Vue.js)
+          if (attr === 'class') {
+            const existing = rootEl.getAttribute('class') || ''
+            rootEl.setAttribute('class', (existing + ' ' + val).trim())
+          }
+
+          // Fusion des styles (comme Vue.js)
+          else if (attr === 'style') {
+            const existing = rootEl.getAttribute('style') || ''
+            const merged = [existing, val]
+                .filter(Boolean)
+                .map(s => s.trim().replace(/;*$/, '')) // supprime les ; en trop
+                .join('; ') + ';'
+            rootEl.setAttribute('style', merged)
+          }
+
+          // Tous les autres attributs normaux
+          else {
+            rootEl.setAttribute(attr, val)
+          }
+        }
+      } else if (tag.getAttribute('class') || tag.getAttribute('style')) {
+        console.warn(pc.yellow(`[vite-plugin-html-include@${version}] Impossible d'ajouter class/style car le composant "${fileAttr}" a plusieurs éléments racines.`))
+      }
+
 
       tag.replaceWith(parsed.toString())
     }
@@ -138,14 +147,31 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     return root.toString()
   }
 
+  /**
+   * Extrait les variables passées sous forme $key="value"
+   */
+  function extractVars(attributes: Record<string, string>): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(attributes)
+            .filter(([k]) => k.startsWith('$'))
+            .map(([k, v]) => [k.slice(1), v])
+    )
+  }
+
+  /**
+   * Remplace uniquement les `{{$var}}` par leur valeur
+   */
   function interpolateVariables(html: string, vars: Record<string, string>): string {
     const [open, close] = delimiters
     return html.replace(
-        new RegExp(`${escapeRegex(open)}(.*?)${escapeRegex(close)}`, 'g'),
+        new RegExp(`${escapeRegex(open)}\\$(.*?)${escapeRegex(close)}`, 'g'),
         (_, key) => vars[key.trim()] ?? ''
     )
   }
 
+  /**
+   * Échappe une chaîne pour l'utiliser dans une RegExp
+   */
   function escapeRegex(str: string): string {
     return str.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')
   }
