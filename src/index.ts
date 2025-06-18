@@ -29,7 +29,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     transformIndexHtml: {
       order: 'pre',
       handler: async (html) => {
-        return await processIncludes(html, process.cwd())
+        return await processIncludes(html, process.cwd(), {})
       },
     },
 
@@ -44,7 +44,10 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     },
   }
 
-  async function processIncludes(inputHtml: string, baseDir: string): Promise<string> {
+  /**
+   * Fonction principale qui traite récursivement les balises <include>
+   */
+  async function processIncludes(inputHtml: string, baseDir: string, inheritedVars: Record<string, string>): Promise<string> {
     const root = parse(inputHtml, {
       lowerCaseTagName: false,
       comment: true,
@@ -60,15 +63,20 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       const tag = root.querySelector('include')
       if (!tag) break
 
-      const fileAttr = tag.getAttribute('file')
-      if (!fileAttr) {
+      // Fusionner les variables héritées avec celles locales
+      const localVars = extractVars(tag.attributes)
+      const mergedVars = { ...inheritedVars, ...localVars }
+
+      // Interpolation du chemin avec les variables merged
+      const fileAttrRaw = tag.getAttribute('file')
+      if (!fileAttrRaw) {
         tag.remove()
         continue
       }
+      const fileAttr = interpolateVariables(fileAttrRaw, mergedVars)
 
-      // Si le chemin commence par /, on le considère relatif à la racine du projet
       const resolvedPath = fileAttr.startsWith('/')
-          ? path.resolve(process.cwd(), fileAttr.slice(1)) // on vire le "/" pour éviter la double racine
+          ? path.resolve(process.cwd(), fileAttr.slice(1))
           : allowAbsolutePaths
               ? path.resolve(baseDir, fileAttr)
               : path.resolve(baseDir, '.' + path.sep + fileAttr)
@@ -82,16 +90,20 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       let content: string
       try {
         content = await fs.readFile(resolvedPath, 'utf-8')
-        console.log(`[vite-plugin-html-include@${version}] Loaded: ${resolvedPath}`)
+        console.log(pc.green(`[vite-plugin-html-include@${version}] Loaded: ${resolvedPath}`))
       } catch {
-        console.warn(pc.red(`[vite-plugin-html-include@${version}] Error reading file: ${resolvedPath}`))
+        console.warn(pc.red(
+            `[vite-plugin-html-include@${version}] Error reading file: ${resolvedPath}\n` +
+            `↪ referenced in: ${baseDir}`
+        ))
         tag.remove()
         continue
       }
 
-      const includedHtml = await processIncludes(content, path.dirname(resolvedPath))
+      // Traitement récursif avec les variables merged
+      const includedHtml = await processIncludes(content, path.dirname(resolvedPath), mergedVars)
 
-      const interpolated = interpolateVariables(includedHtml, extractVars(tag.attributes))
+      const interpolated = interpolateVariables(includedHtml, mergedVars)
       const parsed = parse(interpolated)
 
       // Slot handling
@@ -110,33 +122,25 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         }
       })
 
-      // Retrieve only HTML element children
+      // Injection des attributs normaux
       const children = parsed.childNodes.filter(n => n.nodeType === 1)
-
       if (children.length === 1) {
         const rootEl = children[0] as HTMLElement
 
         for (const [attr, val] of Object.entries(tag.attributes)) {
           if (attr.startsWith('$') || attr === 'file') continue
 
-          // Merge classes (like Vue.js)
           if (attr === 'class') {
             const existing = rootEl.getAttribute('class') || ''
             rootEl.setAttribute('class', (existing + ' ' + val).trim())
-          }
-
-          // Merge styles (like Vue.js)
-          else if (attr === 'style') {
+          } else if (attr === 'style') {
             const existing = rootEl.getAttribute('style') || ''
             const merged = [existing, val]
                 .filter(Boolean)
-                .map(s => s.trim().replace(/;*$/, '')) // remove trailing ;
+                .map(s => s.trim().replace(/;*$/, ''))
                 .join('; ') + ';'
             rootEl.setAttribute('style', merged)
-          }
-
-          // Other attributes
-          else {
+          } else {
             rootEl.setAttribute(attr, val)
           }
         }
@@ -151,7 +155,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   }
 
   /**
-   * Extracts variables passed as $key="value"
+   * Extrait les attributs $var="value"
    */
   function extractVars(attributes: Record<string, string>): Record<string, string> {
     return Object.fromEntries(
@@ -162,19 +166,18 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   }
 
   /**
-   * Replaces only `{{$var}}` occurrences with their values
+   * Interpolation des variables avec support de valeur par défaut
+   * ex: {{$key=default}}
    */
   function interpolateVariables(html: string, vars: Record<string, string>): string {
     const [open, close] = delimiters
-    return html.replace(
-        new RegExp(`${escapeRegex(open)}\\s*\\$(.*?)\\s*${escapeRegex(close)}`, 'g'),
-        (_, key) => vars[key.trim()] ?? '' // <-- ici on applique bien .trim()
-    )
+    const regex = new RegExp(`${escapeRegex(open)}\\s*\\$(.*?)\\s*${escapeRegex(close)}`, 'g')
+    return html.replace(regex, (_, raw) => {
+      const [key, def] = raw.split('=').map((s: string) => s.trim())
+      return vars[key] ?? def ?? ''
+    })
   }
 
-  /**
-   * Escapes a string to safely use it in a RegExp
-   */
   function escapeRegex(str: string): string {
     return str.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')
   }
