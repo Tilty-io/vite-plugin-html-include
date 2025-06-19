@@ -1,3 +1,4 @@
+// a
 import fs from 'fs/promises'
 import path from 'path'
 import { HTMLElement, parse } from 'node-html-parser'
@@ -23,13 +24,36 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
     watch = true,
   } = options
 
+  let viteConfig: any = null
+
+  function resolveWithAlias(fileAttr: string): string {
+    if (viteConfig && viteConfig.resolve && Array.isArray(viteConfig.resolve.alias)) {
+      for (const alias of viteConfig.resolve.alias) {
+        if (typeof alias === 'object' && alias.find && alias.replacement) {
+          if (fileAttr.startsWith(alias.find + '/')) {
+            return fileAttr.replace(alias.find, alias.replacement)
+          }
+        } else if (typeof alias === 'object' && alias.find && alias.replacement !== undefined) {
+          if (fileAttr.startsWith(alias.find + '/')) {
+            return fileAttr.replace(alias.find, alias.replacement)
+          }
+        }
+      }
+    }
+    return fileAttr
+  }
+
   return {
     name: 'vite-plugin-html-include',
 
+    configResolved(config) {
+      viteConfig = config
+    },
+
     transformIndexHtml: {
       order: 'pre',
-      handler: async (html) => {
-        return await processIncludes(html, process.cwd(), {})
+      handler: async (html, { filename }) => {
+        return await processIncludes(html, process.cwd(), {}, filename)
       },
     },
 
@@ -47,7 +71,12 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   /**
    * Fonction principale qui traite récursivement les balises <include>
    */
-  async function processIncludes(inputHtml: string, baseDir: string, inheritedVars: Record<string, string>): Promise<string> {
+  async function processIncludes(
+    inputHtml: string,
+    baseDir: string,
+    inheritedVars: Record<string, string>,
+    sourceFile: string | null = null
+  ): Promise<string> {
     const root = parse(inputHtml, {
       lowerCaseTagName: false,
       comment: true,
@@ -75,11 +104,19 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       }
       const fileAttr = interpolateVariables(fileAttrRaw, mergedVars)
 
-      const resolvedPath = fileAttr.startsWith('/')
+      let resolvedPath = fileAttr
+      if (viteConfig && viteConfig.resolve && viteConfig.resolve.alias) {
+        resolvedPath = resolveWithAlias(fileAttr)
+      }
+      if (resolvedPath !== fileAttr) {
+        resolvedPath = path.resolve(resolvedPath)
+      } else {
+        resolvedPath = fileAttr.startsWith('/')
           ? path.resolve(process.cwd(), fileAttr.slice(1))
           : allowAbsolutePaths
               ? path.resolve(baseDir, fileAttr)
               : path.resolve(baseDir, '.' + path.sep + fileAttr)
+      }
 
       if (!extensions.some(ext => resolvedPath.endsWith(ext))) {
         console.warn(pc.yellow(`[vite-plugin-html-include@${version}] Skipping (extension not allowed): ${resolvedPath}`))
@@ -93,15 +130,20 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         console.log(pc.green(`[vite-plugin-html-include@${version}] Loaded: ${resolvedPath}`))
       } catch {
         console.warn(pc.red(
-            `[vite-plugin-html-include@${version}] Error reading file: ${resolvedPath}\n` +
-            `↪ referenced in: ${baseDir}`
+          `[vite-plugin-html-include@${version}] Error reading file: ${resolvedPath}\n` +
+          `↪ referenced in: ${sourceFile || '(unknown source)'}\n  (include: file=\"${fileAttrRaw}\")`
         ))
         tag.remove()
         continue
       }
 
       // Traitement récursif avec les variables merged
-      const includedHtml = await processIncludes(content, path.dirname(resolvedPath), mergedVars)
+      const includedHtml = await processIncludes(
+        content,
+        path.dirname(resolvedPath),
+        mergedVars,
+        sourceFile || resolvedPath // on garde la source initiale
+      )
 
       const interpolated = interpolateVariables(includedHtml, mergedVars)
       const parsed = parse(interpolated)
