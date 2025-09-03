@@ -159,8 +159,10 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         const name = slot.getAttribute('name')
         if (name && slotNamedMap.has(name)) {
           slot.replaceWith(slotNamedMap.get(name)!)
-        } else if (!name) {
+          } else if (!name && defaultSlot) {
           slot.replaceWith(defaultSlot)
+        } else {
+          slot.replaceWith('') // Remplace le slot non utilisé par rien
         }
       })
 
