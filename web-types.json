@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json.schemastore.org/web-types",
+  "name": "vite-plugin-html-include",
+  "version": "1.0.0",
+  "contributions": {
+    "html": {
+      "elements": [
+        {
+          "name": "include",
+          "description": "Include an external partial and inject variables/slots (vite-plugin-html-include).",
+          "attributes": [
+            {
+              "name": "file",
+              "required": true,
+              "description": "Path to the partial to include.",
+              "value": {
+                "type": "path"
+              }
+            },
+            { "name": "class", "description": "Merged with root element class of the included partial." },
+            { "name": "style", "description": "Merged with root element style of the included partial." },
+            { "name": "$*" , "description": "Variable bindings like $title, $myVar, …" }
+          ]
+        },
+        {
+          "name": "slot",
+          "description": "Placeholder inside a partial. Can be named via the `name` attribute or left unnamed for default content.",
+          "attributes": [
+            { "name": "name", "description": "Name of the slot (matches <template slot=\"…\"> inside <include>)." }
+          ]
+        },
+        {
+          "name": "template",
+          "description": "Used inside <include> to provide content for named slots.",
+          "attributes": [
+            { "name": "slot", "description": "Target slot name defined in the included partial." }
+          ]
+        }
+      ]
+    }
+  }
+}
