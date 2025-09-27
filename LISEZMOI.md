@@ -93,6 +93,22 @@ export default defineConfig({
 
 ---
 
+## Variables : `$var` et `data-$var`
+
+Vous pouvez passer des variables à un composant inclus soit avec `$var="..."`, soit avec `data-$var="..."`. Les deux méthodes sont équivalentes.
+
+### Exemple
+
+```html
+<include file="components/card.html" $titre="Bonjour" />
+<!-- est équivalent à -->
+<include file="components/card.html" data-$titre="Bonjour" />
+```
+
+Dans les deux cas, la variable `$titre` sera injectée dans le composant.
+
+---
+
 ## Class and Style Merging
 
 When the included component has a single root element:

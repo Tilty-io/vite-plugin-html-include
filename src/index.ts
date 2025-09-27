@@ -176,7 +176,7 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
         const rootEl = children[0] as HTMLElement
 
         for (const [attr, val] of Object.entries(tag.attributes)) {
-          if (attr.startsWith('$') || attr === 'file') continue
+          if (attr.startsWith('$') || attr.startsWith('data-$') || attr === 'file') continue
 
           if (attr === 'class') {
             const existing = rootEl.getAttribute('class') || ''
@@ -208,8 +208,8 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
   function extractVars(attributes: Record<string, string>): Record<string, string> {
     return Object.fromEntries(
         Object.entries(attributes)
-            .filter(([k]) => k.startsWith('$'))
-            .map(([k, v]) => [k.slice(1), v])
+            .filter(([k]) => k.startsWith('$') || k.startsWith('data-$'))
+            .map(([k, v]) => [k.startsWith('data-$') ? k.slice(6) : k.slice(1), v])
     )
   }
 
