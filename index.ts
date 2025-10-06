@@ -149,15 +149,27 @@ export default function htmlInclude(options: HtmlIncludeOptions = {}): Plugin {
       const parsed = parse(interpolated)
 
       // Slot handling
-      const defaultContentToInject = tag.innerHTML.trim()
       const slotNamedMap = new Map<string, string>()
-      if(defaultContentToInject){
-        slotNamedMap.set("default", defaultContentToInject);
-      }
-      tag.querySelectorAll('template[slot]').forEach(tpl => {
-        let name = tpl.getAttribute('slot');
-        if (name) slotNamedMap.set(name, tpl.innerHTML.trim())
+      const slotTemplates = tag.querySelectorAll('template[slot]')
+      slotTemplates.forEach(tpl => {
+        const name = tpl.getAttribute('slot')
+        if (name) {
+          slotNamedMap.set(name, tpl.innerHTML.trim())
+        }
       })
+
+      const defaultContentToInject = tag.childNodes
+        .filter(node => {
+          if (node.nodeType !== 1) return true
+          const element = node as HTMLElement
+          return !(element.tagName.toLowerCase() === 'template' && element.getAttribute('slot'))
+        })
+        .map(node => node.toString())
+        .join('')
+        .trim()
+      if (defaultContentToInject) {
+        slotNamedMap.set('default', defaultContentToInject)
+      }
       parsed.querySelectorAll('slot').forEach(slot => {
         let name = slot.getAttribute('name');
         if(!name){name="default";}
