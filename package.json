@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-html-include",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "A Vite plugin to include HTML and SVG partials with variable interpolation and slot support.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,7 +13,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "web-types.json"
   ],
   "web-types": "./web-types.json",
   "scripts": {
