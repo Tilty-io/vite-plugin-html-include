@@ -1,0 +1,26 @@
+diff --git a/src/index.ts b/src/index.ts
+  index 708d9a1..3d2ea99 100644
+  --- a/src/index.ts
+  +++ b/src/index.ts
+  @@ -156,10 +156,17 @@ export default function htmlInclude(options:
+  HtmlIncludeOptions = {}): Plugin {
+           if (name) {
+             slotNamedMap.set(name, tpl.innerHTML.trim())
+           }
+  -        tpl.remove()
+         })
+
+  -      const defaultContentToInject = tag.innerHTML.trim()
+  +      const defaultContentToInject = tag.childNodes
+  +        .filter(node => {
+  +          if (node.nodeType !== 1) return true
+  +          const element = node as HTMLElement
+  +          return !(element.tagName.toLowerCase() === 'template' &&
+  element.getAttribute('slot'))
+  +        })
+  +        .map(node => node.toString())
+  +        .join('')
+  +        .trim()
+         if (defaultContentToInject) {
+           slotNamedMap.set('default', defaultContentToInject)
+         }

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Patched Plugin Output</title>
+  </head>
+  <body>
+    <h1>Patched plugin (local build)</h1>
+    <include file="./partials/card.html">
+      <template slot="title">Heading from template</template>
+      <p>This paragraph should land in the default slot.</p>
+    </include>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
